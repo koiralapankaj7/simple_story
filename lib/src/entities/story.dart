@@ -1,4 +1,8 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:simple_utils/simple_utils.dart';
+
+///
+typedef PlayerEvent<T> = PlayerEventResult Function(ActionIntent intent);
 
 /// Intent behind user action.
 ///
@@ -7,6 +11,15 @@ import 'package:flutter/foundation.dart';
 /// [next] => user want to access next item
 enum ActionIntent { previous, next, none }
 
+///
+enum PlayerEventResult {
+  ///
+  handled,
+
+  ///
+  ignored,
+}
+
 /// Story state
 enum StoryState { none, played, skipped }
 
@@ -14,14 +27,16 @@ enum StoryState { none, played, skipped }
 enum StoryPlayerState { paused, playing, next, previous, completed, none }
 
 /// Story list
-class StoryList<T> {
-  StoryList({
+class Story<T> {
+  Story({
     required this.id,
-    required this.stories,
+    required this.clips,
     this.author,
     this.extra = const <String, dynamic>{},
     this.initialIndex = 0,
     this.completed = false,
+    this.curve,
+    this.duration,
   });
 
   /// String id to represent story collection
@@ -30,8 +45,14 @@ class StoryList<T> {
   ///
   final String? author;
 
-  /// Collection of stories
-  final List<Story<T>> stories;
+  /// Clips inside the story
+  final List<StoryClip<T>> clips;
+
+  ///
+  final Duration? duration;
+
+  ///
+  final Curve? curve;
 
   ///
   final Map<String, dynamic> extra;
@@ -43,25 +64,29 @@ class StoryList<T> {
   bool completed;
 
   /// Copy object
-  StoryList<T> copyWith({
+  Story<T> copyWith({
     String? id,
-    List<Story<T>>? stories,
+    List<StoryClip<T>>? stories,
     Map<String, dynamic>? extra,
     int? initialIndex,
     bool? completed,
+    Duration? duration,
+    Curve? curve,
   }) {
-    return StoryList<T>(
+    return Story<T>(
       id: id ?? this.id,
-      stories: stories ?? this.stories,
+      clips: stories ?? this.clips,
       extra: extra ?? this.extra,
       initialIndex: initialIndex ?? this.initialIndex,
       completed: completed ?? this.completed,
+      duration: duration ?? this.duration,
+      curve: curve ?? this.curve,
     );
   }
 
   @override
   String toString() =>
-      'StoryList(id: $id, stories: $stories), extra: $extra initialIndex: $initialIndex, hasUnplayedStory: $completed';
+      'StoryList(id: $id, stories: $clips), extra: $extra initialIndex: $initialIndex, hasUnplayedStory: $completed';
 }
 
 /// Vertical slide direction
@@ -69,12 +94,12 @@ enum SwipeDirection { up, down }
 
 /// This is a representation of a story item (or page).
 @immutable
-class Story<T> {
+class StoryClip<T> extends Equatable {
   ///
-  const Story({
+  const StoryClip({
     required this.id,
     this.detail,
-    this.duration = const Duration(seconds: 5),
+    this.duration,
     this.state = StoryState.none,
     this.extra = const <String, dynamic>{},
   });
@@ -82,12 +107,12 @@ class Story<T> {
   /// Story id
   final String id;
 
-  /// Generic object that can be used with [Story]
+  /// Generic object that can be used with [StoryClip]
   final T? detail;
 
   /// Specifies how long the story should be displayed. It should be a
-  /// reasonable amount of time greater than 1 seconds.
-  final Duration duration;
+  /// reasonable amount of time greater than 1 seconds. default to 5 second
+  final Duration? duration;
 
   /// State of the story
   final StoryState state;
@@ -95,14 +120,15 @@ class Story<T> {
   /// Extra information
   final Map<String, dynamic> extra;
 
-  Story<T> copyWith({
+  ///
+  StoryClip<T> copyWith({
     String? id,
     T? detail,
     Duration? duration,
     StoryState? state,
     Map<String, dynamic>? extra,
   }) {
-    return Story<T>(
+    return StoryClip<T>(
       id: id ?? this.id,
       detail: detail ?? this.detail,
       duration: duration ?? this.duration,
@@ -112,28 +138,11 @@ class Story<T> {
   }
 
   @override
-  String toString() {
-    return 'Story(id: $id, detail: $detail, duration: $duration, played: $state, extra: $extra)';
-  }
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-
-    return other is Story<T> &&
-        other.id == id &&
-        other.detail == detail &&
-        other.duration == duration &&
-        other.state == state &&
-        mapEquals<String, dynamic>(other.extra, extra);
-  }
-
-  @override
-  int get hashCode {
-    return id.hashCode ^
-        detail.hashCode ^
-        duration.hashCode ^
-        state.hashCode ^
-        extra.hashCode;
-  }
+  List<Object?> get props => [
+        id,
+        detail,
+        duration,
+        state,
+        extra,
+      ];
 }

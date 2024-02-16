@@ -9,24 +9,22 @@ import 'widgets/widgets.dart';
 class SimpleStory<T extends Object?> extends StatefulWidget {
   const SimpleStory({
     required this.items,
-    required this.storyBuilder,
+    required this.clipBuilder,
     super.key,
-    this.storyFooterBuilder,
     this.controller,
     this.initialIndex = 0,
   });
 
-  final List<StoryList<T>> items;
-  final StoryBuilder<T> storyBuilder;
-  final StoryBuilder<T>? storyFooterBuilder;
+  final List<Story<T>> items;
+  final StoryClipBuilder<T> clipBuilder;
   final SSController<T>? controller;
   final int initialIndex;
 
   /// Open [SimpleStory]
   static Future<T?> open<T>(
     BuildContext context, {
-    required List<StoryList<T>> items,
-    required StoryBuilder<T> storyBuilder,
+    required List<Story<T>> items,
+    required StoryClipBuilder<T> clipBuilder,
     Key? key,
     SSController<T>? controller,
     int initialIndex = 0,
@@ -40,7 +38,7 @@ class SimpleStory<T extends Object?> extends StatefulWidget {
         return SimpleStory(
           key: key,
           items: items,
-          storyBuilder: storyBuilder,
+          clipBuilder: clipBuilder,
           initialIndex: initialIndex,
           controller: controller,
         );
@@ -88,25 +86,24 @@ class _SimpleStoryState<T> extends State<SimpleStory<T>> {
                 return StoryPlayerTransform(
                   index: index,
                   controller: _controller,
-                  child: StoryPlayer<T>(
-                    storyList: storyList,
-                    storyBuilder: widget.storyBuilder,
-                    storyFooterBuilder: widget.storyFooterBuilder,
+                  child: StoryView<T>(
+                    story: storyList,
+                    builder: widget.clipBuilder,
                     autoPlay: false,
-                    onInit: (playerController) {
-                      if (index == widget.initialIndex) {
-                        Future<void>.delayed(
-                          const Duration(milliseconds: 300),
-                          () {
-                            if (!mounted) return;
-                            playerController.play();
-                          },
-                        );
-                      }
-                      _controller
-                        .._context = context
-                        .._playerController = playerController;
-                    },
+                    // onInit: (playerController) {
+                    //   if (index == widget.initialIndex) {
+                    //     Future<void>.delayed(
+                    //       const Duration(milliseconds: 300),
+                    //       () {
+                    //         if (!mounted) return;
+                    //         playerController.play();
+                    //       },
+                    //     );
+                    //   }
+                    //   _controller
+                    //     .._context = context
+                    //     .._playerController = playerController;
+                    // },
                     onComplete: (intent) {
                       switch (intent) {
                         case ActionIntent.next:
@@ -114,8 +111,8 @@ class _SimpleStoryState<T> extends State<SimpleStory<T>> {
                         case ActionIntent.previous:
                           _controller.previousItem();
                         case ActionIntent.none:
-                          return;
                       }
+                      return PlayerEventResult.handled;
                     },
                   ),
                 );
@@ -158,16 +155,16 @@ class SSController<T> extends ChangeNotifier {
   /// PageView default curve
   final _curve = Curves.ease;
 
-  /// [StoryList] collection
-  List<StoryList<T>> _items = [];
+  /// [Story] collection
+  List<Story<T>> _items = [];
 
   ///
-  StoryPlayerController<T>? _playerController;
+  StoryPlayer<T>? _playerController;
 
   ///
   late BuildContext? _context;
 
-  void _init({required List<StoryList<T>> items}) {
+  void _init({required List<Story<T>> items}) {
     _items = items;
 
     _initialized = true;
@@ -247,8 +244,8 @@ extension StoryGalleryControllerX<T> on SSController<T> {
   /// true, if first item of the gallery
   bool get isFirstItem => currentIndex == 0;
 
-  /// [StoryList] for current gallery item
-  StoryList<T> get currentStoryList => _items[currentIndex];
+  /// [Story] for current gallery item
+  Story<T> get currentStoryList => _items[currentIndex];
 }
 
 /// [SSController] provider

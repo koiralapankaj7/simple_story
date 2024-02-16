@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
-import 'widgets.dart';
 
 class DragDetails {
-  const DragDetails({required this.extent, required this.progress});
+  const DragDetails({
+    required this.extent,
+    required this.progress,
+    this.snapBack,
+  });
   final double extent;
   final double progress;
+  final VoidCallback? snapBack;
 
   static const DragDetails zero = DragDetails(extent: 0, progress: 0);
 }
@@ -23,6 +27,7 @@ class StoryPlayerGesture extends StatefulWidget {
     this.bottom,
     this.pauseDuration,
     this.snapDuration,
+    this.behavior,
   });
 
   final VoidCallback? onPause;
@@ -31,6 +36,7 @@ class StoryPlayerGesture extends StatefulWidget {
   final VoidCallback? onNext;
   final VoidCallback? onSwipeUp;
   final ValueChanged<DragDetails>? onDragDown;
+  final HitTestBehavior? behavior;
 
   /// Amount of pixels that user need to drag from the top to
   /// trigger
@@ -80,7 +86,7 @@ class _StoryPlayerGestureState extends State<StoryPlayerGesture>
 
   var _downInitialDX = 0.0;
   var _downDuration = Duration.zero;
-  var _isPaused = true;
+  var _isPaused = false;
 
   bool get _isLeft => _downInitialDX < _widthThird;
   bool get _isRight => _downInitialDX > _widthThird * 2;
@@ -113,8 +119,6 @@ class _StoryPlayerGestureState extends State<StoryPlayerGesture>
   void _onPointerDown(PointerDownEvent event) {
     _downInitialDX = event.position.dx;
     _downDuration = event.timeStamp;
-    // _isCenter ? _togglePause() : _pause();
-    // _pause();
     widget.onPause?.call();
   }
 
@@ -140,6 +144,7 @@ class _StoryPlayerGestureState extends State<StoryPlayerGesture>
     widget.onDragDown?.call(DragDetails(
       extent: extent,
       progress: progress,
+      snapBack: _snapBack,
     ));
   }
 
@@ -179,8 +184,7 @@ class _StoryPlayerGestureState extends State<StoryPlayerGesture>
     if (_dragExtent > 0) {
       if (_dragExtent < (widget.top ?? 200)) {
         _snapBack();
-      } else {
-        // _updateMessage('Close page');
+        widget.onPlay?.call();
       }
     } else if (_dragExtent < -(widget.bottom ?? 60)) {
       widget.onSwipeUp?.call();
@@ -195,111 +199,18 @@ class _StoryPlayerGestureState extends State<StoryPlayerGesture>
     ) {
       _constraints = constraints;
       return Listener(
-        behavior: HitTestBehavior.translucent,
+        behavior: widget.behavior ?? HitTestBehavior.translucent,
         onPointerDown: _onPointerDown,
         onPointerUp: _onPointerUp,
-        child: GestureDetector(
-          onVerticalDragStart: _onVerticalDragStart,
-          onVerticalDragUpdate: _onVerticalDragUpdate,
-          onVerticalDragEnd: _onVerticalDragEnd,
-          behavior: HitTestBehavior.translucent,
-        ),
+        child: widget.onSwipeUp == null && widget.onDragDown == null
+            ? null
+            : GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onVerticalDragStart: _onVerticalDragStart,
+                onVerticalDragUpdate: _onVerticalDragUpdate,
+                onVerticalDragEnd: _onVerticalDragEnd,
+              ),
       );
     });
-  }
-}
-
-class StoryViewControls extends StatelessWidget {
-  const StoryViewControls({
-    required this.controller,
-    required this.onPause,
-    required this.onPlay,
-    required this.onNext,
-    required this.onPrevious,
-    super.key,
-  });
-
-  ///
-  final StoryPlayerController controller;
-
-  ///
-  final VoidCallback onPause;
-
-  ///
-  final VoidCallback onPlay;
-
-  ///
-  final VoidCallback onPrevious;
-
-  ///
-  final VoidCallback onNext;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          const SizedBox(width: 16.0),
-          // Previous
-          _Button(
-            onPressed: onPrevious,
-            iconData: Icons.navigate_before,
-            color: Colors.white12,
-          ),
-
-          const SizedBox(width: 8.0),
-
-          // Next
-          _Button(
-            onPressed: onNext,
-            iconData: Icons.navigate_next,
-            color: Colors.white12,
-          ),
-
-          const SizedBox(width: 8.0),
-
-          // Play/Pause
-          AnimatedBuilder(
-            animation: controller,
-            builder: (conntext, child) {
-              return _Button(
-                radius: 24.0,
-                onPressed: controller.isPlaying ? onPause : onPlay,
-                iconData: controller.isPlaying ? Icons.pause : Icons.play_arrow,
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Button extends StatelessWidget {
-  const _Button({
-    required this.onPressed,
-    required this.iconData,
-    this.radius = 20.0,
-    this.color,
-  });
-
-  final VoidCallback onPressed;
-  final IconData iconData;
-  final double radius;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(radius),
-      child: CircleAvatar(
-        backgroundColor: color,
-        maxRadius: radius,
-        child: Icon(iconData),
-      ),
-    );
   }
 }

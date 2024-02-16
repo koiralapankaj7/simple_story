@@ -4,7 +4,6 @@ import 'dart:developer' as developer;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/physics.dart';
 import 'package:simple_story/simple_story.dart';
 
 void main() {
@@ -26,7 +25,7 @@ class _MainAppState extends State<MainApp> {
     final parentId = 'Story-$parentIndex';
     final items = List.generate(random.nextInt(10) + 1, (index) {
       final imgId = prevCount + ((parentIndex + 1) * index);
-      return Story<String>(
+      return StoryClip<String>(
         detail: 'https://picsum.photos/id/$imgId/400/500',
         id: '$parentId-$index',
       );
@@ -34,9 +33,9 @@ class _MainAppState extends State<MainApp> {
 
     prevCount += items.length;
 
-    return StoryList(
+    return Story(
       id: parentId,
-      stories: items,
+      clips: items,
       author: 'https://i.pravatar.cc/150?img=${random.nextInt(50)}',
     );
   });
@@ -50,82 +49,108 @@ class _MainAppState extends State<MainApp> {
       ),
       home: Scaffold(
         appBar: AppBar(title: const Text('Simple Story')),
-        body: _Gesture(),
-        // body: CustomScrollView(
-        //   slivers: [
-        //     // Stories
-        //     SliverToBoxAdapter(
-        //       child: SizedBox(
-        //         height: 100,
-        //         // color: Colors.cyan,
-        //         child: ListView.separated(
-        //           scrollDirection: Axis.horizontal,
-        //           itemCount: stories.length,
-        //           padding: const EdgeInsets.all(8),
-        //           physics: const AlwaysScrollableScrollPhysics(),
-        //           itemBuilder: (context, index) {
-        //             final item = stories[index];
-        //             return AspectRatio(
-        //               aspectRatio: 1,
-        //               child: StoryCircle.decorated(
-        //                 onPressed: () {
-        //                   SimpleStory.open(
-        //                     context,
-        //                     items: stories,
-        //                     storyBuilder: (story, parent, controller) {
-        //                       // return StoryView(
-        //                       //   story: story,
-        //                       //   controller: controller,
-        //                       //   creator: parent.author as String,
-        //                       // );
+        // body: const _Gesture(),
+        body: CustomScrollView(
+          slivers: [
+            // Stories
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 100,
+                // color: Colors.cyan,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: stories.length,
+                  padding: const EdgeInsets.all(8),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemBuilder: (context, index) {
+                    final item = stories[index];
+                    return AspectRatio(
+                      aspectRatio: 1,
+                      child: StoryCircle.decorated(
+                        onPressed: () {
+                          SimpleStory.open(
+                            context,
+                            items: stories,
+                            clipBuilder: (context, clip, player) {
+                              // return StoryView(
+                              //   story: story,
+                              //   controller: controller,
+                              //   creator: parent.author as String,
+                              // );
 
-        //                       return CachedNetworkImage(
-        //                         imageUrl: story.detail as String,
-        //                         // imageBuilder: (context, imageProvider) {
+                              return CachedNetworkImage(
+                                imageUrl: clip.detail as String,
+                                // imageBuilder: (context, imageProvider) {
 
-        //                         // },
+                                // },
 
-        //                         progressIndicatorBuilder:
-        //                             (context, url, progress) {
-        //                           // controller.pause()
-        //                           final pg = progress.totalSize == null
-        //                               ? 0
-        //                               : (progress.totalSize! /
-        //                                       progress.downloaded) *
-        //                                   100;
-        //                           return Center(child: Text('$pg'));
-        //                         },
-        //                       );
-        //                     },
-        //                   );
-        //                 },
-        //                 image: DecorationImage(
-        //                   image: CachedNetworkImageProvider(item.author!),
-        //                 ),
-        //               ),
-        //             );
-        //           },
-        //           separatorBuilder: (context, index) =>
-        //               const SizedBox(width: 8),
-        //         ),
-        //       ),
-        //     ),
+                                progressIndicatorBuilder:
+                                    (context, url, progress) {
+                                  // controller.pause()
+                                  final pg = progress.totalSize == null
+                                      ? 0
+                                      : (progress.totalSize! /
+                                              progress.downloaded) *
+                                          100;
+                                  return Center(child: Text('$pg'));
+                                },
+                              );
+                            },
+                          );
+                        },
+                        image: DecorationImage(
+                          image: CachedNetworkImageProvider(item.author!),
+                        ),
+                      ),
+                    );
+                  },
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(width: 8),
+                ),
+              ),
+            ),
 
-        //     const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-        //     // // Posts
-        //     // ListView.builder(
-        //     //   itemBuilder: itemBuilder,
-        //     // ),
-        //   ],
-        // ),
+            //
+            SliverToBoxAdapter(
+              child: Container(
+                height: 250,
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black12,
+                      spreadRadius: 4,
+                      blurRadius: 4,
+                    ),
+                  ],
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                ),
+                clipBehavior: Clip.hardEdge,
+                child: StoryView(
+                  story: stories.first,
+                  builder: (context, clip, player) {
+                    return SizedBox.expand(
+                      child: CachedNetworkImage(
+                        imageUrl: clip.detail as String,
+                        fit: BoxFit.cover,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _Gesture extends StatefulWidget {
-  const _Gesture({super.key});
+  const _Gesture();
 
   @override
   State<_Gesture> createState() => _GestureState();
@@ -136,7 +161,7 @@ class _GestureState extends State<_Gesture> {
   String _message = 'Tap, LongPress or Swipe on the screen';
 
   void _updateMessage(String message) {
-    developer.log(message);
+    // developer.log(message);
     setState(() {
       _message = message;
     });
