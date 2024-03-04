@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'dart:developer' as developer;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
@@ -20,19 +19,18 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> {
   var prevCount = 0;
   final random = Random();
+  final _widthController = TextEditingController();
 
   late final stories = List.generate(20, (parentIndex) {
     final parentId = 'Story-$parentIndex';
-    final items = List.generate(random.nextInt(10) + 1, (index) {
+    final items = List.generate(random.nextInt(10) + 3, (index) {
       final imgId = prevCount + ((parentIndex + 1) * index);
-      return StoryClip<String>(
-        detail: 'https://picsum.photos/id/$imgId/400/500',
+      return StoryClip(
+        extra: 'https://picsum.photos/id/$imgId/400/500',
         id: '$parentId-$index',
       );
     });
-
     prevCount += items.length;
-
     return Story(
       id: parentId,
       clips: items,
@@ -40,12 +38,94 @@ class _MainAppState extends State<MainApp> {
     );
   });
 
+  late final _story = Story(
+    id: 'StandaloneStory',
+    clips: List.generate(random.nextInt(10) + 3, (index) {
+      return StoryClip(
+        extra: 'https://picsum.photos/id/${index + 20}/400/500',
+        id: 'StandaloneStory-$index',
+      );
+    }),
+  );
+
+  final _alignments = [
+    Alignment.topLeft,
+    Alignment.topCenter,
+    Alignment.topRight,
+    Alignment.centerLeft,
+    Alignment.center,
+    Alignment.centerRight,
+    Alignment.bottomLeft,
+    Alignment.bottomCenter,
+    Alignment.bottomRight,
+  ];
+
+  Axis _barDirection = Axis.horizontal;
+  HorizontalDirection _hbpDirection = HorizontalDirection.right;
+  VerticalDirection _vbpDirection = VerticalDirection.up;
+  Alignment _varAlignment = Alignment.topCenter;
+  double? _barWidth;
+  bool _loading = false;
+
+  Widget _clipBuilder(
+    BuildContext context,
+    StoryClip clip,
+    StoryPlayer player,
+  ) {
+    if (_loading) {
+      return const Center(
+        child: RepaintBoundary(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: clip.extra as String,
+      fit: BoxFit.cover,
+    );
+  }
+
+  Future<void> _loadClip(StoryClip clip) async {
+    // To avoid setState during build
+    await null;
+    if (!context.mounted) return;
+    setState(() => _loading = true);
+    try {
+      final imageProvider = CachedNetworkImageProvider(clip.extra as String);
+      await precacheImage(imageProvider, context);
+    } catch (e) {
+      //
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  StoryDetails _storyBuilder(Story story, {StoryPlayer? player}) {
+    return StoryDetails(
+      player: player,
+      clipBuilder: (context, clip, player) {
+        return CachedNetworkImage(
+          imageUrl: clip.extra as String,
+          fit: BoxFit.cover,
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _widthController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      darkTheme: ThemeData.dark(),
+      themeMode: ThemeMode.light,
       scrollBehavior: const ScrollBehavior().copyWith(
-        scrollbars: false,
         dragDevices: PointerDeviceKind.values.toSet(),
+        scrollbars: false,
       ),
       home: Scaffold(
         appBar: AppBar(title: const Text('Simple Story')),
@@ -67,35 +147,11 @@ class _MainAppState extends State<MainApp> {
                     return AspectRatio(
                       aspectRatio: 1,
                       child: StoryCircle.decorated(
-                        onPressed: () {
+                        onPressed: (context) {
                           SimpleStory.open(
                             context,
-                            items: stories,
-                            clipBuilder: (context, clip, player) {
-                              // return StoryView(
-                              //   story: story,
-                              //   controller: controller,
-                              //   creator: parent.author as String,
-                              // );
-
-                              return CachedNetworkImage(
-                                imageUrl: clip.detail as String,
-                                // imageBuilder: (context, imageProvider) {
-
-                                // },
-
-                                progressIndicatorBuilder:
-                                    (context, url, progress) {
-                                  // controller.pause()
-                                  final pg = progress.totalSize == null
-                                      ? 0
-                                      : (progress.totalSize! /
-                                              progress.downloaded) *
-                                          100;
-                                  return Center(child: Text('$pg'));
-                                },
-                              );
-                            },
+                            stories: stories,
+                            builder: _storyBuilder,
                           );
                         },
                         image: DecorationImage(
@@ -122,24 +178,145 @@ class _MainAppState extends State<MainApp> {
                   boxShadow: const [
                     BoxShadow(
                       color: Colors.black12,
-                      spreadRadius: 4,
+                      spreadRadius: 2,
                       blurRadius: 4,
                     ),
                   ],
-                  color: Theme.of(context).scaffoldBackgroundColor,
+                  // color: Theme.of(context).scaffoldBackgroundColor,
+                  color: Colors.grey.shade900,
                 ),
                 clipBehavior: Clip.hardEdge,
-                child: StoryView(
-                  story: stories.first,
-                  builder: (context, clip, player) {
-                    return SizedBox.expand(
-                      child: CachedNetworkImage(
-                        imageUrl: clip.detail as String,
-                        fit: BoxFit.cover,
-                      ),
-                    );
-                  },
-                ),
+                child: Builder(builder: (context) {
+                  return StoryView(
+                    story: _story,
+                    storyLoader: (player) => _loadClip(player.currentClip),
+                    gesture: StoryGesture(
+                      onTapCenter: (result) {
+                        SimpleStory.open(
+                          context,
+                          stories: [_story],
+                          builder: (story) =>
+                              _storyBuilder(story, player: result.$1),
+                        );
+                        return PlayerEventResult.handled;
+                      },
+                    ),
+                    onComplete: (intent) {
+                      return intent == ActionIntent.next
+                          ? PlayerEventResult.handled
+                          : PlayerEventResult.ignored;
+                    },
+                    progressBar: _barDirection == Axis.horizontal
+                        ? StoryProgressBar(
+                            alignment: _varAlignment,
+                            progressDirection: _hbpDirection,
+                            width: _barWidth,
+                          )
+                        : StoryProgressBar.vertical(
+                            alignment: _varAlignment,
+                            progressDirection: _vbpDirection,
+                            height: _barWidth,
+                          ),
+                    clipBuilder: _clipBuilder,
+                  );
+                }),
+              ),
+            ),
+
+            //
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  // Axis
+                  _DropdownTile(
+                    items: Axis.values,
+                    initialValue: _barDirection,
+                    title: 'Bar Direction',
+                    onSelected: (item) {
+                      setState(() {
+                        _barDirection = item ?? Axis.horizontal;
+                        if (_barDirection == Axis.vertical) {
+                          _varAlignment = Alignment.centerRight;
+                        }
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  if (_barDirection == Axis.horizontal) ...[
+                    _DropdownTile(
+                      items: HorizontalDirection.values,
+                      initialValue: _hbpDirection,
+                      title: 'Progress Direction',
+                      onSelected: (item) {
+                        setState(() {
+                          _hbpDirection = item ?? HorizontalDirection.right;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                  ] else ...[
+                    _DropdownTile(
+                      items: VerticalDirection.values,
+                      initialValue: _vbpDirection,
+                      title: 'Progress Direction',
+                      onSelected: (item) {
+                        setState(() {
+                          _vbpDirection = item ?? VerticalDirection.down;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // Alignment
+                  _DropdownTile(
+                    items: _alignments,
+                    initialValue: _varAlignment,
+                    title: 'Alignment',
+                    onSelected: (item) {
+                      setState(() {
+                        _varAlignment = item ?? Alignment.topCenter;
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Bar extent
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _widthController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              border: const OutlineInputBorder(),
+                              hintText: 'Bar width',
+                              contentPadding: const EdgeInsets.only(left: 16),
+                              constraints: BoxConstraints.tight(
+                                const Size.fromHeight(40),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        OutlinedButton(
+                          onPressed: () {
+                            setState(() {
+                              _barWidth =
+                                  double.tryParse(_widthController.text);
+                            });
+                          },
+                          child: const Text('Done'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -149,111 +326,168 @@ class _MainAppState extends State<MainApp> {
   }
 }
 
-class _Gesture extends StatefulWidget {
-  const _Gesture();
+class _DropdownTile<T> extends StatelessWidget {
+  const _DropdownTile({
+    super.key,
+    this.initialValue,
+    required this.items,
+    required this.title,
+    required this.onSelected,
+  });
 
-  @override
-  State<_Gesture> createState() => _GestureState();
-}
-
-class _GestureState extends State<_Gesture> {
-  final _dragDetails = ValueNotifier(DragDetails.zero);
-  String _message = 'Tap, LongPress or Swipe on the screen';
-
-  void _updateMessage(String message) {
-    // developer.log(message);
-    setState(() {
-      _message = message;
-    });
-  }
-
-  @override
-  void dispose() {
-    _dragDetails.dispose();
-    super.dispose();
-  }
+  final T? initialValue;
+  final Iterable<T> items;
+  final String title;
+  final ValueChanged<T?> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-            child: Row(
-          mainAxisSize: MainAxisSize.max,
-          children: List.generate(
-            3,
-            (index) => Expanded(
-              child: SizedBox.expand(
-                child: ColoredBox(
-                  color: const Color(0xffcccccc).withAlpha(
-                    100 * (index + 1),
-                  ),
-                ),
-              ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
-        )),
-
-        //
-        Positioned.fill(
-          child: ValueListenableBuilder<DragDetails>(
-            valueListenable: _dragDetails,
-            builder: (context, details, child) {
-              return Transform.translate(
-                offset: Offset(0, details.extent),
-                child: Container(
-                  margin: EdgeInsets.symmetric(
-                    horizontal: 24 * details.progress,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(
-                      24 * details.progress,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      _message,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ),
-                ),
+          DropdownMenu<T>(
+            initialSelection: initialValue,
+            selectedTrailingIcon: Transform.translate(
+              offset: const Offset(8, -4),
+              child: const Icon(Icons.arrow_drop_up),
+            ),
+            trailingIcon: Transform.translate(
+              offset: const Offset(8, -4),
+              child: const Icon(Icons.arrow_drop_down),
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.only(left: 16),
+              constraints: BoxConstraints.tight(
+                const Size.fromHeight(40),
+              ),
+            ),
+            onSelected: onSelected,
+            dropdownMenuEntries: items.map((e) {
+              return DropdownMenuEntry(
+                value: e,
+                label: '$e',
               );
-            },
+            }).toList(),
           ),
-        ),
-
-        Positioned.fill(
-          // child: GestureDetectorPage(),
-          child: StoryPlayerGesture(
-            onPrevious: () {
-              _updateMessage('Previous');
-            },
-            onPause: () {
-              _updateMessage('Pause');
-            },
-            onPlay: () {
-              _updateMessage('Play');
-            },
-            onNext: () {
-              _updateMessage('Next');
-            },
-            onDragDown: (value) {
-              _dragDetails.value = value;
-            },
-            onSwipeUp: () {
-              _updateMessage('Swipe Up');
-            },
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
+
+// class _Gesture extends StatefulWidget {
+//   const _Gesture();
+
+//   @override
+//   State<_Gesture> createState() => _GestureState();
+// }
+
+// class _GestureState extends State<_Gesture> {
+//   final _dragDetails = ValueNotifier(DragDetails.zero);
+//   String _message = 'Tap, LongPress or Swipe on the screen';
+
+//   void _updateMessage(String message) {
+//     // developer.log(message);
+//     setState(() {
+//       _message = message;
+//     });
+//   }
+
+//   @override
+//   void dispose() {
+//     _dragDetails.dispose();
+//     super.dispose();
+//   }
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Stack(
+//       children: [
+//         Positioned.fill(
+//             child: Row(
+//           mainAxisSize: MainAxisSize.max,
+//           children: List.generate(
+//             3,
+//             (index) => Expanded(
+//               child: SizedBox.expand(
+//                 child: ColoredBox(
+//                   color: const Color(0xffcccccc).withAlpha(
+//                     100 * (index + 1),
+//                   ),
+//                 ),
+//               ),
+//             ),
+//           ),
+//         )),
+
+//         //
+//         Positioned.fill(
+//           child: ValueListenableBuilder<DragDetails>(
+//             valueListenable: _dragDetails,
+//             builder: (context, details, child) {
+//               return Transform.translate(
+//                 offset: Offset(0, details.extent),
+//                 child: Container(
+//                   margin: EdgeInsets.symmetric(
+//                     horizontal: 24 * details.progress,
+//                   ),
+//                   decoration: BoxDecoration(
+//                     color: Colors.amber.withOpacity(0.5),
+//                     borderRadius: BorderRadius.circular(
+//                       24 * details.progress,
+//                     ),
+//                   ),
+//                   child: Center(
+//                     child: Text(
+//                       _message,
+//                       textAlign: TextAlign.center,
+//                       style: const TextStyle(
+//                         fontSize: 24,
+//                         color: Colors.black,
+//                       ),
+//                     ),
+//                   ),
+//                 ),
+//               );
+//             },
+//           ),
+//         ),
+
+//         Positioned.fill(
+//           // child: GestureDetectorPage(),
+//           child: StoryGesture(
+//             onPrevious: () {
+//               _updateMessage('Previous');
+//             },
+//             onPause: () {
+//               _updateMessage('Pause');
+//             },
+//             onPlay: () {
+//               _updateMessage('Play');
+//             },
+//             onNext: () {
+//               _updateMessage('Next');
+//             },
+//             onDragDown: (value) {
+//               _dragDetails.value = value;
+//             },
+//             onSwipeUp: () {
+//               _updateMessage('Swipe Up');
+//             },
+//           ),
+//         ),
+//       ],
+//     );
+//   }
+// }
 
 // class GestureDetectorPage extends StatefulWidget {
 //   @override

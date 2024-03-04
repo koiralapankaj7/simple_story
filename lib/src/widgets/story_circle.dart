@@ -5,34 +5,36 @@ import 'package:flutter/material.dart';
 class StoryCircle extends StatelessWidget {
   ///
   const StoryCircle({
-    required this.child,
+    required Widget this.child,
     super.key,
     this.strokeWidth = 3.0,
     this.space = 2.0,
     this.strokeColors,
-  });
+  }) : _builder = null;
 
   ///
   StoryCircle.decorated({
     required DecorationImage image,
-    VoidCallback? onPressed,
+    ValueSetter<BuildContext>? onPressed,
     DecorationPosition? position,
-    Widget? child,
+    this.child,
     super.key,
     this.strokeWidth = 3.0,
     this.space = 2.0,
     this.strokeColors,
-  }) : child = DecoratedBox(
-          position: position ?? DecorationPosition.background,
-          decoration: BoxDecoration(image: image),
-          child: Material(
-            type: MaterialType.transparency,
-            clipBehavior: Clip.hardEdge,
-            child: onPressed != null
-                ? InkWell(onTap: onPressed, child: child)
-                : child,
-          ),
-        );
+  }) : _builder = ((context) {
+          return DecoratedBox(
+            position: position ?? DecorationPosition.background,
+            decoration: BoxDecoration(image: image),
+            child: Material(
+              type: MaterialType.transparency,
+              clipBehavior: Clip.hardEdge,
+              child: onPressed != null
+                  ? InkWell(onTap: () => onPressed(context), child: child)
+                  : child,
+            ),
+          );
+        });
 
   /// Circle stroke width
   final double strokeWidth;
@@ -44,7 +46,10 @@ class StoryCircle extends StatelessWidget {
   final List<Color>? strokeColors;
 
   ///
-  final Widget child;
+  final Widget? child;
+
+  ///
+  final WidgetBuilder? _builder;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +60,7 @@ class StoryCircle extends StatelessWidget {
       ),
       child: Padding(
         padding: EdgeInsets.all(space + strokeWidth),
-        child: ClipOval(child: child),
+        child: ClipOval(child: _builder?.call(context) ?? child),
       ),
     );
   }

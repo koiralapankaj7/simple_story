@@ -1,46 +1,120 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:simple_utils/simple_utils.dart';
 
 import 'entities/entities.dart';
 import 'widgets/widgets.dart';
 
 ///
-class SimpleStory<T extends Object?> extends StatefulWidget {
-  const SimpleStory({
-    required this.items,
+typedef StoryBuilder = StoryDetails Function(Story story);
+
+double _degToRad(num deg) => deg * (math.pi / 180.0);
+
+///
+class StoryDetails {
+  const StoryDetails({
     required this.clipBuilder,
-    super.key,
+    this.transitionBuilder,
+    this.progressBar,
+    this.player,
+    this.onComplete,
+    this.storyLoader,
+    DraggableStoryGesture? gesture,
+  }) : gesture = gesture ?? DraggableStoryGesture.none;
+
+  /// Story clip/item builder
+  final StoryClipBuilder clipBuilder;
+
+  ///
+  final AnimatedSwitcherTransitionBuilder? transitionBuilder;
+
+  ///
+  final StoryProgressBar? progressBar;
+
+  ///
+  final StoryPlayer? player;
+
+  ///
+  final DraggableStoryGesture gesture;
+
+  /// Callback for when a all stories is played or when going previous item
+  /// from first index. Only [AxisDirection.left] and [AxisDirection.right] will
+  /// be used.
+  ///
+  /// [ActionIntent.previous] means user is trying to browse previous item
+  /// from first story.
+  ///
+  /// [ActionIntent.next] means user has played all stories ang trying to
+  /// browse next story
+  final PlayerEvent? onComplete;
+
+  ///
+  final StoryLoader? storyLoader;
+}
+
+/// ==================== StoryViewGesture ====================
+
+///
+class SimpleStory extends StatefulWidget {
+  const SimpleStory({
+    required this.stories,
+    required this.builder,
+    this.transitionBuilder,
+    // this.gesture,
     this.controller,
     this.initialIndex = 0,
+    this.autoPlay,
+    this.animation,
+    super.key,
   });
 
-  final List<Story<T>> items;
-  final StoryClipBuilder<T> clipBuilder;
-  final SSController<T>? controller;
+  final List<Story> stories;
+  // final StoryClipBuilder clipBuilder;
+  final SimpleStoryController? controller;
   final int initialIndex;
+  final bool? autoPlay;
+  final Animation<double>? animation;
+  final AnimatedSwitcherTransitionBuilder? transitionBuilder;
+  // final ConfigGetter? gesture;
+  final StoryBuilder builder;
 
   /// Open [SimpleStory]
-  static Future<T?> open<T>(
+  static Future<void> open(
     BuildContext context, {
-    required List<Story<T>> items,
-    required StoryClipBuilder<T> clipBuilder,
-    Key? key,
-    SSController<T>? controller,
+    required List<Story> stories,
+    required StoryBuilder builder,
+    SimpleStoryController? controller,
     int initialIndex = 0,
+    bool? autoPlay,
+    Key? key,
   }) {
-    final route = PageRouteBuilder<T>(
-      transitionDuration: const Duration(milliseconds: 800),
-      reverseTransitionDuration: const Duration(milliseconds: 600),
+    final route = PageRouteBuilder(
+      transitionDuration: const Duration(milliseconds: 500),
+      reverseTransitionDuration: const Duration(milliseconds: 500),
       opaque: false,
       settings: const RouteSettings(name: 'storyGallery'),
-      pageBuilder: (context, animation, secondaryAnimation) {
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        return MatrixTransition(
+          animation: animation,
+          onTransform: (value) {
+            return Matrix4.identity()..translate(0.0, 200 * (1 - value));
+          },
+          child: child,
+        );
+      },
+      pageBuilder: (_, animation, secondaryAnimation) {
         return SimpleStory(
           key: key,
-          items: items,
-          clipBuilder: clipBuilder,
+          stories: stories,
+          builder: builder,
           initialIndex: initialIndex,
           controller: controller,
+          animation: animation,
+          autoPlay: autoPlay,
         );
       },
     );
@@ -48,87 +122,204 @@ class SimpleStory<T extends Object?> extends StatefulWidget {
   }
 
   @override
-  State<SimpleStory<T>> createState() => _SimpleStoryState<T>();
+  State<SimpleStory> createState() => _SimpleStoryState();
 }
 
-class _SimpleStoryState<T> extends State<SimpleStory<T>> {
-  late final SSController<T> _controller;
+class _SimpleStoryState extends State<SimpleStory>
+    with SingleTickerProviderStateMixin {
+  late final SimpleStoryController _controller;
+  final _dragDetails = Value(DragDetails.zero);
+  // late final _animationController = AnimationController(
+  //   vsync: this,
+  //   duration: kThemeAnimationDuration,
+  // );
+
+  // late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
-    _controller =
-        widget.controller ?? SSController<T>(initialIndex: widget.initialIndex);
-    _controller._init(items: widget.items);
+    // _animation = widget.animation ??
+    //     CurvedAnimation(
+    //       parent: _animationController,
+    //       curve: Curves.easeOut,
+    //     );
+    _controller = widget.controller ??
+        SimpleStoryController(initialIndex: widget.initialIndex);
+    _controller._init(items: widget.stories, context: context);
   }
 
   @override
   void dispose() {
+    _dragDetails.dispose();
     if (widget.controller == null) {
       _controller.dispose();
     }
+    // _animationController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return StoryGalleryControllerProvider<T>(
+    return StoryGalleryControllerProvider(
       controller: _controller,
-      child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light,
-        child: Builder(
-          builder: (context) {
-            return PageView.builder(
-              controller: _controller.pageController,
-              itemCount: widget.items.length,
-              itemBuilder: (context, index) {
-                final storyList = widget.items[index];
-                return StoryPlayerTransform(
-                  index: index,
-                  controller: _controller,
-                  child: StoryView<T>(
-                    story: storyList,
-                    builder: widget.clipBuilder,
-                    autoPlay: false,
-                    // onInit: (playerController) {
-                    //   if (index == widget.initialIndex) {
-                    //     Future<void>.delayed(
-                    //       const Duration(milliseconds: 300),
-                    //       () {
-                    //         if (!mounted) return;
-                    //         playerController.play();
-                    //       },
-                    //     );
-                    //   }
-                    //   _controller
-                    //     .._context = context
-                    //     .._playerController = playerController;
-                    // },
-                    onComplete: (intent) {
-                      switch (intent) {
-                        case ActionIntent.next:
-                          _controller.nextItem();
-                        case ActionIntent.previous:
-                          _controller.previousItem();
-                        case ActionIntent.none:
-                      }
-                      return PlayerEventResult.handled;
+      child: SafeArea(
+        child: ListenableBuilder(
+          listenable: widget.animation != null
+              ? Listenable.merge([_dragDetails, widget.animation])
+              : _dragDetails,
+          builder: (context, child) {
+            final value = 1 - _dragDetails.value.progress;
+            final margin = (80 * (1 - value)).clamp(0.0, 24.0);
+            return ColoredBox(
+              color: Colors.black.withOpacity(value),
+              child: Transform.translate(
+                offset: Offset(0.0, _dragDetails.value.extent),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: margin),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(margin),
+                    child: child,
+                  ),
+                ),
+              ),
+            );
+            // final animValue = widget.animation?.value ?? 0.0;
+            // final value =
+            //     (animValue - _dragDetails.value.progress).clamp(0.0, 1.0);
+            // return ColoredBox(
+            //   color: Colors.black.withOpacity(value),
+            //   child: Transform.translate(
+            //     offset: Offset(0.0, _dragDetails.value.extent),
+            //     // transform: Matrix4.identity()
+            //     //   ..scale(
+            //     //     widget.animation?.value,
+            //     //     widget.animation?.value,
+            //     //   ),
+            //     // ..translate(0.0, _dragDetails.value.extent * animValue),
+            //     child: Padding(
+            //       padding: EdgeInsets.symmetric(horizontal: margin),
+            //       child: ClipRRect(
+            //         borderRadius: BorderRadius.circular(margin),
+            //         child: child,
+            //       ),
+            //     ),
+            //   ),
+            // );
+          },
+          child: PageView.builder(
+            controller: _controller.pageController,
+            itemCount: widget.stories.length,
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemBuilder: (context, index) {
+              final story = widget.stories[index];
+              final detail = widget.builder(story);
+
+              return StoryPlayerTransform(
+                index: index,
+                controller: _controller,
+                child: StoryView.draggable(
+                  onPlayerInit: _controller._onPlayerInit,
+                  onDisposed: _controller._onStoryDisposed,
+                  story: story,
+                  player: detail.player,
+                  clipBuilder: detail.clipBuilder,
+                  transitionBuilder: detail.transitionBuilder,
+                  autoPlay: widget.autoPlay,
+                  gesture: detail.gesture.copyWith(
+                    onDragUpdate: (record) {
+                      detail.gesture.onDragUpdate?.call(record);
+                      _dragDetails.update(record.$2);
+                    },
+                    onDragDown: (clip) {
+                      detail.gesture.onDragDown?.call(clip);
+                      Navigator.of(context).pop();
                     },
                   ),
-                );
-              },
-            );
-          },
+                  onComplete: (intent) {
+                    final res = detail.onComplete?.call(intent);
+                    if (res == PlayerEventResult.handled) return res!;
+                    return _controller._handelIntent(intent);
+                  },
+                  storyLoader: (player) => true,
+                  progressBar: null,
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
   }
 }
 
+/// ==================== StoryViewGesture ====================
+
+///
+class StoryPlayerTransform extends StatelessWidget {
+  const StoryPlayerTransform({
+    required this.index, // required this.pageValue,
+    required this.child,
+    required this.controller,
+    super.key,
+  });
+
+  ///
+  final int index;
+
+  /// final double pageValue;
+  final Widget child;
+
+  ///
+  final SimpleStoryController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<PageValue>(
+      valueListenable: controller.pageValueNotifier,
+      builder: (context, pageValue, ch) {
+        final overscrollPercent =
+            pageValue.overScrollPercent(MediaQuery.of(context).size.width);
+        final pagePercent = index - pageValue.page;
+
+        final isLeaving = pagePercent.isNegative || pageValue.isRightOverScroll;
+        final t = pageValue.isOverScroll
+            ? overscrollPercent * (pageValue.isRightOverScroll ? -1 : 1)
+            : pagePercent;
+        final rotationY = lerpDouble(0, 90, t)!;
+        final opacity = lerpDouble(0, 1, t.abs())!.clamp(0.0, 1.0);
+        final transform = Matrix4.identity()
+          ..setEntry(3, 2, 0.001)
+          ..rotateY(-_degToRad(rotationY));
+
+        return Transform(
+          alignment: isLeaving ? Alignment.centerRight : Alignment.centerLeft,
+          // transform: isLeaving ? Matrix4.identity() : transform,
+          transform: transform,
+          child: Stack(
+            children: [
+              ch!,
+              Positioned.fill(
+                child: Opacity(
+                  opacity: opacity,
+                  child: const SizedBox.shrink(),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
+/// ==================== StoryViewGesture ====================
+
 ///
 /// [SimpleStory] controller
-class SSController<T> extends ChangeNotifier {
-  SSController({int initialIndex = 0}) {
+class SimpleStoryController extends ChangeNotifier {
+  SimpleStoryController({int initialIndex = 0}) {
     pageController = PageController(initialPage: initialIndex)
       ..addListener(_pageListener);
     pageValueNotifier = ValueNotifier(
@@ -136,14 +327,14 @@ class SSController<T> extends ChangeNotifier {
     );
   }
 
-  /// If pageview will be overscrolled by this pixel, [SimpleStory]
+  /// If pageView will be overScrolled by this pixel, [SimpleStory]
   /// will be closed.
   final _overScrollPX = 100.0;
 
   /// Check if controller has been initialized from [SimpleStory] or not
   bool _initialized = false;
 
-  /// Gallery pageview controller
+  /// Gallery pageView controller
   late final PageController pageController;
 
   /// Page value notifier
@@ -156,18 +347,29 @@ class SSController<T> extends ChangeNotifier {
   final _curve = Curves.ease;
 
   /// [Story] collection
-  List<Story<T>> _items = [];
+  List<Story> _items = [];
 
   ///
-  StoryPlayer<T>? _playerController;
+  StoryPlayer? _player;
 
   ///
-  late BuildContext? _context;
+  BuildContext? _context;
 
-  void _init({required List<Story<T>> items}) {
+  void _init({
+    required List<Story> items,
+    required BuildContext context,
+  }) {
     _items = items;
-
+    _context = context;
     _initialized = true;
+  }
+
+  void _onPlayerInit(StoryPlayer player) {
+    _player = player;
+  }
+
+  void _onStoryDisposed() {
+    _player = null;
   }
 
   void _pageListener() {
@@ -180,12 +382,23 @@ class SSController<T> extends ChangeNotifier {
     final value = pageValueNotifier.value;
 
     if (value.page == value.index && !value.isOverScroll) {
-      _playerController?.play();
+      _player?.play();
     }
 
     if (value.isOverScroll && value.overScrollPercent(_overScrollPX) == 1.0) {
       _pop();
     }
+  }
+
+  PlayerEventResult _handelIntent(ActionIntent intent) {
+    switch (intent) {
+      case ActionIntent.next:
+        nextItem();
+      case ActionIntent.previous:
+        previousItem();
+      case ActionIntent.none:
+    }
+    return PlayerEventResult.handled;
   }
 
   bool _popped = false;
@@ -224,17 +437,6 @@ class SSController<T> extends ChangeNotifier {
     _changePage(currentIndex - 1);
   }
 
-  @override
-  void dispose() {
-    pageController
-      ..removeListener(_pageListener)
-      ..dispose();
-    super.dispose();
-  }
-}
-
-/// [SSController] Extension
-extension StoryGalleryControllerX<T> on SSController<T> {
   /// Current index of the gallery
   int get currentIndex => pageValueNotifier.value.page.truncate();
 
@@ -244,21 +446,41 @@ extension StoryGalleryControllerX<T> on SSController<T> {
   /// true, if first item of the gallery
   bool get isFirstItem => currentIndex == 0;
 
+  ///
+  StoryPlayer get currentPlayer {
+    assert(_player != null, '');
+    return _player!;
+  }
+
   /// [Story] for current gallery item
-  Story<T> get currentStoryList => _items[currentIndex];
+  Story get currentStory => _items[currentIndex];
+
+  ///
+  StoryClip get currentClip {
+    assert(_player != null, '');
+    return _player!.currentClip;
+  }
+
+  @override
+  void dispose() {
+    pageController
+      ..removeListener(_pageListener)
+      ..dispose();
+    super.dispose();
+  }
 }
 
-/// [SSController] provider
-class StoryGalleryControllerProvider<T> extends InheritedWidget {
-  /// Creates a widget that associates a [StoryGalleryControllerProvider<T>]
+/// [SimpleStoryController] provider
+class StoryGalleryControllerProvider extends InheritedWidget {
+  /// Creates a widget that associates a [StoryGalleryControllerProvider]
   /// with a subtree.
   const StoryGalleryControllerProvider({
-    required SSController<T> this.controller,
+    required SimpleStoryController this.controller,
     required super.child,
     super.key,
   });
 
-  /// Creates a subtree without an associated [SSController].
+  /// Creates a subtree without an associated [SimpleStoryController].
   const StoryGalleryControllerProvider.none({
     required super.child,
     super.key,
@@ -266,22 +488,22 @@ class StoryGalleryControllerProvider<T> extends InheritedWidget {
 
   /// The [StoryGalleryControllerProvider] associated with the subtree.
   ///
-  final SSController<T>? controller;
+  final SimpleStoryController? controller;
 
-  /// Returns the [StoryGalleryControllerProvider<T>] most closely
+  /// Returns the [StoryGalleryControllerProvider] most closely
   /// associated with the given context.
   ///
-  /// Returns null if there is no [StoryGalleryControllerProvider<T>]
+  /// Returns null if there is no [StoryGalleryControllerProvider]
   /// associated with the given context.
-  static SSController<T>? of<T>(BuildContext context) {
-    final result = context.dependOnInheritedWidgetOfExactType<
-        StoryGalleryControllerProvider<T>>();
+  static SimpleStoryController? of(BuildContext context) {
+    final result = context
+        .dependOnInheritedWidgetOfExactType<StoryGalleryControllerProvider>();
     return result?.controller;
   }
 
   @override
   bool updateShouldNotify(
-    covariant StoryGalleryControllerProvider<T> oldWidget,
+    covariant StoryGalleryControllerProvider oldWidget,
   ) =>
       controller != oldWidget.controller;
 
@@ -289,7 +511,7 @@ class StoryGalleryControllerProvider<T> extends InheritedWidget {
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     properties.add(
-      DiagnosticsProperty<SSController<T>>(
+      DiagnosticsProperty<SimpleStoryController>(
         'controller',
         controller,
         ifNull: 'no controller',
@@ -300,8 +522,23 @@ class StoryGalleryControllerProvider<T> extends InheritedWidget {
 }
 
 /// [StoryGalleryControllerProviderContextX] Extension
-extension StoryGalleryControllerProviderContextX<T> on BuildContext {
-  /// [StoryGalleryControllerProvider<T>] instance
-  SSController<T>? get storyGalleryController =>
-      StoryGalleryControllerProvider.of<T>(this);
+extension StoryGalleryControllerProviderContextX on BuildContext {
+  /// [StoryGalleryControllerProvider] instance
+  SimpleStoryController? get storyGalleryController =>
+      StoryGalleryControllerProvider.of(this);
 }
+
+// onInit: (playerController) {
+                    //   if (index == widget.initialIndex) {
+                    //     Future<void>.delayed(
+                    //       const Duration(milliseconds: 300),
+                    //       () {
+                    //         if (!mounted) return;
+                    //         playerController.play();
+                    //       },
+                    //     );
+                    //   }
+                    //   _controller
+                    //     .._context = context
+                    //     .._playerController = playerController;
+                    // },

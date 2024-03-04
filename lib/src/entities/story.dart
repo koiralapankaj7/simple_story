@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:simple_utils/simple_utils.dart';
 
-///
-typedef PlayerEvent<T> = PlayerEventResult Function(ActionIntent intent);
-
 /// Intent behind user action.
 ///
 /// [previous] => user want to access previous item
@@ -27,26 +24,26 @@ enum StoryState { none, played, skipped }
 enum StoryPlayerState { paused, playing, next, previous, completed, none }
 
 /// Story list
-class Story<T> {
+class Story {
   Story({
     required this.id,
     required this.clips,
     this.author,
-    this.extra = const <String, dynamic>{},
+    this.extra,
     this.initialIndex = 0,
     this.completed = false,
     this.curve,
     this.duration,
   });
 
-  /// String id to represent story collection
+  /// String id to represent story
   final String id;
 
   ///
   final String? author;
 
   /// Clips inside the story
-  final List<StoryClip<T>> clips;
+  final List<StoryClip> clips;
 
   ///
   final Duration? duration;
@@ -55,7 +52,7 @@ class Story<T> {
   final Curve? curve;
 
   ///
-  final Map<String, dynamic> extra;
+  final Object? extra;
 
   /// Initial index of the stories from where player will start playing
   int initialIndex;
@@ -64,18 +61,18 @@ class Story<T> {
   bool completed;
 
   /// Copy object
-  Story<T> copyWith({
+  Story copyWith({
     String? id,
-    List<StoryClip<T>>? stories,
-    Map<String, dynamic>? extra,
+    List<StoryClip>? clips,
+    Object? extra,
     int? initialIndex,
     bool? completed,
     Duration? duration,
     Curve? curve,
   }) {
-    return Story<T>(
+    return Story(
       id: id ?? this.id,
-      clips: stories ?? this.clips,
+      clips: clips ?? this.clips,
       extra: extra ?? this.extra,
       initialIndex: initialIndex ?? this.initialIndex,
       completed: completed ?? this.completed,
@@ -94,11 +91,10 @@ enum SwipeDirection { up, down }
 
 /// This is a representation of a story item (or page).
 @immutable
-class StoryClip<T> extends Equatable {
+class StoryClip extends Equatable {
   ///
   const StoryClip({
     required this.id,
-    this.detail,
     this.duration,
     this.state = StoryState.none,
     this.extra = const <String, dynamic>{},
@@ -106,9 +102,6 @@ class StoryClip<T> extends Equatable {
 
   /// Story id
   final String id;
-
-  /// Generic object that can be used with [StoryClip]
-  final T? detail;
 
   /// Specifies how long the story should be displayed. It should be a
   /// reasonable amount of time greater than 1 seconds. default to 5 second
@@ -118,19 +111,17 @@ class StoryClip<T> extends Equatable {
   final StoryState state;
 
   /// Extra information
-  final Map<String, dynamic> extra;
+  final Object extra;
 
   ///
-  StoryClip<T> copyWith({
+  StoryClip copyWith({
     String? id,
-    T? detail,
     Duration? duration,
     StoryState? state,
     Map<String, dynamic>? extra,
   }) {
-    return StoryClip<T>(
+    return StoryClip(
       id: id ?? this.id,
-      detail: detail ?? this.detail,
       duration: duration ?? this.duration,
       state: state ?? this.state,
       extra: extra ?? this.extra,
@@ -140,7 +131,6 @@ class StoryClip<T> extends Equatable {
   @override
   List<Object?> get props => [
         id,
-        detail,
         duration,
         state,
         extra,
